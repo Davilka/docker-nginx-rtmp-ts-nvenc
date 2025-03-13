@@ -1,8 +1,9 @@
 ARG NGINX_VERSION=1.26.3
-ARG NGINX_RTMP_VERSION=v1.2.2-r1
+ARG OPENRESTY_VERSION=1.25.3.2
+ARG NGINX_RTMP_VERSION=1.2.2-r1
 ARG FFMPEG_VERSION=7.1
-ARG NV_CODEC_VERSION=   n13.0.19.0
-ARG LUAJIT_VERSION=2.1.ROLLING
+ARG NV_CODEC_VERSION=n13.0.19.0
+ARG LUAJIT_VERSION=2.1-20250117
 ARG NGX_VERSION=0.3.3
 ARG LUA_NGINX_VERSION=0.10.28
 
@@ -10,6 +11,7 @@ ARG LUA_NGINX_VERSION=0.10.28
 # Build the NGINX-build image.
 FROM nvidia/cuda:12.8.0-devel-ubuntu22.04 as build-nginx
 ARG NGINX_VERSION
+ARG OPENRESTY_VERSION
 ARG NGINX_RTMP_VERSION
 ARG LUAJIT_VERSION
 ARG NGX_VERSION
@@ -23,54 +25,88 @@ RUN apt update && apt install -y \
   libc-dev \
   make \
   libssl-dev \
-  libluajit-5.1-dev \
   libpcre3 \
   libpcre3-dev \
   #linux-headers-$(uname -r) \
-  linux-headers \
-  luajit \
+#  linux-headers \
+# luajit \
   pkg-config \
   wget \
   zlib1g-dev
 
+# Build linux-headers from source
+RUN apt update && apt install -y \
+  build-essential \
+  bison \
+  flex \
+  bc \
+  libelf-dev \
+  pahole \
+  git \
+  python3
+
+RUN cd /tmp && \
+  git clone 'https://github.com/microsoft/WSL2-Linux-Kernel.git' --branch linux-msft-wsl-$(uname -r | sed -E 's/^([0-9]\.[0-9]+).*/\1.y/g' ) --depth 1 --recurse-submodules && \
+  cd /tmp/WSL2-Linux-Kernel && \
+  make KCONFIG_CONFIG=Microsoft/config-wsl -j$(nproc) && \
+  make modules_install && \
+  make install
+#  cd ..
+#  sudo cp /boot/vmlinuz-$(uname -r) /mnt/c/Users/d_khrapun/vmlinuz-$(uname -r) && \
+#  printf '[wsl2]\nkernel=C:\\\\Users\\\\d_khrapun\\\\vmlinuz-(uname -r)\n' | sudo tee --append /mnt/c/Users/d_khrapun/.wslconfig
+
+
 # Get nginx source.
 RUN cd /tmp && \
-  wget https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz && \
-  tar zxf nginx-${NGINX_VERSION}.tar.gz && \
-  rm nginx-${NGINX_VERSION}.tar.gz
+#  wget https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz && \
+  wget https://github.com/openresty/openresty/releases/download/v${OPENRESTY_VERSION}/openresty-${OPENRESTY_VERSION}.tar.gz && \
+  tar zxf openresty-${OPENRESTY_VERSION}.tar.gz && rm openresty-${OPENRESTY_VERSION}.tar.gz
 
 # Get Ngx Devel Kit
-RUN cd /tmp && \
-  wget https://github.com/vision5/ngx_devel_kit/archive/v${NGX_VERSION}.tar.gz && \
-  tar zxf v${NGX_VERSION}.tar.gz && rm v${NGX_VERSION}.tar.gz
+#RUN cd /tmp && \
+#  wget https://github.com/vision5/ngx_devel_kit/archive/v${NGX_VERSION}.tar.gz && \
+#  tar zxf v${NGX_VERSION}.tar.gz && rm v${NGX_VERSION}.tar.gz
 
 # Get lua-nginx module
-RUN cd /tmp && \
-  wget https://github.com/openresty/lua-nginx-module/archive/v${LUA_NGINX_VERSION}.tar.gz && \
-  tar zxf v${LUA_NGINX_VERSION}.tar.gz && rm v${LUA_NGINX_VERSION}.tar.gz
+#RUN cd /tmp && \
+#  wget https://github.com/openresty/lua-nginx-module/archive/v${LUA_NGINX_VERSION}.tar.gz && \
+#  tar zxf v${LUA_NGINX_VERSION}.tar.gz && rm v${LUA_NGINX_VERSION}.tar.gz
 
 # Get nginx-rtmp module.
 RUN cd /tmp && \
-  wget https://github.com/sergey-dryabzhinsky/nginx-rtmp-module/archive/${NGINX_RTMP_VERSION}.tar.gz && \
-  tar zxf ${NGINX_RTMP_VERSION}.tar.gz && rm ${NGINX_RTMP_VERSION}.tar.gz
+  wget https://github.com/sergey-dryabzhinsky/nginx-rtmp-module/archive/v${NGINX_RTMP_VERSION}.tar.gz && \
+  tar zxf v${NGINX_RTMP_VERSION}.tar.gz && rm v${NGINX_RTMP_VERSION}.tar.gz
+
+# Get luajit module.
+RUN cd /tmp && \
+  wget https://github.com/openresty/luajit2/archive/v${LUAJIT_VERSION}.tar.gz && \
+  tar zxf v${LUAJIT_VERSION}.tar.gz && rm v${LUAJIT_VERSION}.tar.gz
+
+# Build and install luajit2
+#RUN cd /tmp/luajit2-${LUAJIT_VERSION} && \
+#  make -j$(nproc) PREFIX=/usr/luajit && \
+#  make install PREFIX=/usr/luajit
 
 # Compile nginx with nginx-rtmp module and Lua support
-RUN cd /tmp/nginx-${NGINX_VERSION} && \
-  export LUAJIT_LIB=/usr/lib && \
-  export LUAJIT_INC=/usr/include/luajit-2.1 && \
+#RUN cd /tmp/nginx-${NGINX_VERSION} && \
+RUN cd /tmp/openresty-${OPENRESTY_VERSION} && \
+#  export LUAJIT_LIB=/usr/luajit/lib && \
+#  export LUAJIT_INC=/usr/luajit/include/luajit-2.1 && \
   ./configure \
-  --with-ld-opt="-Wl,-rpath,$LUAJIT_LIB" \
-  --prefix=/usr/local/nginx \
+#  --with-ld-opt="-Wl,-rpath,${LUAJIT_LIB}" \
+  --prefix=/usr/local/ \
   --add-module=/tmp/nginx-rtmp-module-${NGINX_RTMP_VERSION} \
-  --add-module=/tmp/ngx_devel_kit-${NGX_VERSION} \
-  --add-module=/tmp/lua-nginx-module-${LUA_NGINX_VERSION} \
+#  --add-module=/tmp/ngx_devel_kit-${NGX_VERSION} \
+#  --add-module=/tmp/lua-nginx-module-${LUA_NGINX_VERSION} \
+#  --add-module=/tmp/luajit2-${LUAJIT_VERSION} \
   --conf-path=/etc/nginx/nginx.conf \
   --with-threads \
   --with-file-aio \
   --with-http_ssl_module \
   --with-debug \
   --with-cc-opt="-Wimplicit-fallthrough=0" && \
-  cd /tmp/nginx-${NGINX_VERSION} && make -j4 && make install
+#  cd /tmp/nginx-${NGINX_VERSION} && make -j$(nproc) && make install
+  cd /tmp/openresty-${OPENRESTY_VERSION} && make -j$(nproc) && make install
 
 ###############################
 # Build the FFmpeg-build image.
@@ -121,11 +157,13 @@ RUN git clone https://git.videolan.org/git/ffmpeg/nv-codec-headers.git && \
 
 # Get FFmpeg source.
 RUN cd /tmp/ && \
-  wget http://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.gz && \
-  tar zxf ffmpeg-${FFMPEG_VERSION}.tar.gz && rm ffmpeg-${FFMPEG_VERSION}.tar.gz
+  #wget http://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.gz && \
+  wget https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n${FFMPEG_VERSION}.tar.gz && \
+  #wget https://nexcloud.nextime.su/sharing/Yl6pd8cpZ && \
+  tar zxf n${FFMPEG_VERSION}.tar.gz && rm n${FFMPEG_VERSION}.tar.gz
 
 # Compile ffmpeg.
-RUN cd /tmp/ffmpeg-${FFMPEG_VERSION} && \
+RUN cd /tmp/FFmpeg-n${FFMPEG_VERSION} && \
   ./configure \
   --prefix=${PREFIX} \
   --enable-version3 \
@@ -143,7 +181,7 @@ RUN cd /tmp/ffmpeg-${FFMPEG_VERSION} && \
   --enable-libass \
   --enable-libwebp \
   --enable-postproc \
-  --enable-avresample \
+  #--enable-avresample \
   --enable-libfreetype \
   --enable-openssl \
   --enable-nvenc \
@@ -155,7 +193,7 @@ RUN cd /tmp/ffmpeg-${FFMPEG_VERSION} && \
   --disable-doc \
   --disable-ffplay \
   --extra-libs="-lpthread -lm" && \
-  make -j4 && make install && make distclean
+  make -j$(nproc) && make install && make distclean
 
 # Cleanup.
 RUN rm -rf /var/cache/* /tmp/*
@@ -198,12 +236,12 @@ RUN apt update && apt install -y \
   libwebpmux3 \
   libx264-dev \
   libx265-dev \
-  luajit \
+#  luajit \
   rtmpdump \
   tzdata \
   hdhomerun-config
 
-COPY --from=build-nginx /usr/local/nginx /usr/local/nginx
+COPY --from=build-nginx /usr/local /usr/local
 COPY --from=build-nginx /etc/nginx /etc/nginx
 COPY --from=build-ffmpeg /usr/local /usr/local
 
