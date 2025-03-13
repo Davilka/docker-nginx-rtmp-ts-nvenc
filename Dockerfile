@@ -1,14 +1,14 @@
 ARG NGINX_VERSION=1.26.3
 ARG NGINX_RTMP_VERSION=v1.2.2-r1
 ARG FFMPEG_VERSION=7.1
-ARG NV_CODEC_VERSION=	n13.0.19.0
+ARG NV_CODEC_VERSION=   n13.0.19.0
 ARG LUAJIT_VERSION=2.1.ROLLING
 ARG NGX_VERSION=0.3.3
 ARG LUA_NGINX_VERSION=0.10.28
 
 ##############################
 # Build the NGINX-build image.
-FROM nvidia/cuda:10.2-devel as build-nginx
+FROM nvidia/cuda:12.8.0-devel-ubuntu22.04 as build-nginx
 ARG NGINX_VERSION
 ARG NGINX_RTMP_VERSION
 ARG LUAJIT_VERSION
@@ -26,7 +26,8 @@ RUN apt update && apt install -y \
   libluajit-5.1-dev \
   libpcre3 \
   libpcre3-dev \
-  linux-headers-$(uname -r) \
+  #linux-headers-$(uname -r) \
+  linux-headers \
   luajit \
   pkg-config \
   wget \
@@ -73,7 +74,7 @@ RUN cd /tmp/nginx-${NGINX_VERSION} && \
 
 ###############################
 # Build the FFmpeg-build image.
-FROM nvidia/cuda:10.2-devel as build-ffmpeg
+FROM nvidia/cuda:12.8.0-devel-ubuntu22.04 as build-ffmpeg
 ARG FFMPEG_VERSION
 ARG PREFIX=/usr/local
 ARG NV_CODEC_VERSION
@@ -161,7 +162,7 @@ RUN rm -rf /var/cache/* /tmp/*
 
 ##########################
 # Build the release image.
-FROM nvidia/cuda:10.2-base
+FROM nvidia/cuda:12.8.0-base-ubuntu22.04
 LABEL MAINTAINER Marc Khouri <github@khouri.ca>
 
 # Set default ports.
@@ -178,13 +179,13 @@ RUN apt update && apt install -y \
   curl \
   libass9 \
   libasound2 \
-  libfdk-aac1 \
+  libfdk-aac2 \
   libsdl2-2.0-0 \
-  libsndio6.1 \
+  libsndio7.0 \
   libva2 \
-  libvpx5 \
+  libvpx7 \
   libvorbis0a \
-  libwebp6 \
+  libwebp7 \
   libtheora0 \
   libopus0 \
   libpcre3 \
